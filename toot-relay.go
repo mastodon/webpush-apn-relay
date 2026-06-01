@@ -209,7 +209,7 @@ func handler(writer http.ResponseWriter, request *http.Request) {
 			requestLog.Error(fmt.Sprintf("Error retrieving salt: %s", err))
 			return
 		}
-	//case "aes128gcm": // No further headers needed. However, not implemented on client side so return 415.
+	case "aes128gcm": // RFC8030+RFC8291+RFC8292 support. No further headers needed.
 	default:
 		writer.WriteHeader(415)
 		fmt.Fprintln(writer, "Unsupported Content-Encoding:", request.Header.Get("Content-Encoding"))
