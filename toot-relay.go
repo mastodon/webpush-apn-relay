@@ -26,9 +26,10 @@ import (
 )
 
 type Message struct {
-	isProduction bool
-	notification *apns2.Notification
-	requestLog   *log.Entry // For logging with datadog context
+	isProduction   bool
+	notification   *apns2.Notification
+	unsubscribeUrl string
+	requestLog     *log.Entry // For logging with datadog context
 }
 
 var (
@@ -72,10 +73,36 @@ func worker(workerId int) {
 				"collapse-id":  msg.notification.CollapseID,
 			}).Info(fmt.Sprintf("Sent notification (%v)", res.StatusCode))
 		} else {
+			unsubscribed := false
+
+			// 410 status means that the token is invalid. This is a definitive error, and we should remove the subscription
+			// from the originating server to avoid continuing sending requests that will never work again.
+			// See https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns
+			if msg.unsubscribeUrl != "" && res.StatusCode == 410 {
+				unsubscribeRes, unsubscribeErr := http.NewRequest("DELETE", msg.unsubscribeUrl, nil)
+
+				if unsubscribeErr == nil {
+					if unsubscribeRes.Response.StatusCode == 200 {
+						unsubscribed = true
+					} else {
+						msg.requestLog.WithFields(log.Fields{
+							"status-code":     unsubscribeRes.Response.StatusCode,
+							"unsubscribe-url": msg.unsubscribeUrl,
+						}).Error(fmt.Sprintf("Failed to unsubscribe for notification (%v)", unsubscribeRes.Response.StatusCode))
+					}
+				} else {
+					msg.requestLog.WithFields(log.Fields{
+						"error":           unsubscribeErr.Error(),
+						"unsubscribe-url": msg.unsubscribeUrl,
+					}).Error("Failed to unsubscribe for notification")
+				}
+			}
+
 			msg.requestLog.WithFields(log.Fields{
-				"status-code": res.StatusCode,
-				"apns-id":     res.ApnsID,
-				"reason":      res.Reason,
+				"status-code":  res.StatusCode,
+				"apns-id":      res.ApnsID,
+				"reason":       res.Reason,
+				"unsubscribed": unsubscribed,
 			}).Error(fmt.Sprintf("Failed to send notification (%v)", res.StatusCode))
 		}
 	}
@@ -234,7 +261,9 @@ func handler(writer http.ResponseWriter, request *http.Request) {
 		notification.Priority = apns2.PriorityHigh
 	}
 
-	messageChan <- &Message{isProduction, notification, requestLog}
+	unsubscribeUrl := request.Header.Get("Unsubscribe-Url")
+
+	messageChan <- &Message{isProduction, notification, unsubscribeUrl, requestLog}
 
 	// always reply w/ success, since we don't know how apple responded
 	writer.WriteHeader(201)
