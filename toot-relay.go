@@ -145,7 +145,7 @@ func main() {
 	} else {
 		authKey, err := token.AuthKeyFromFile(tokenAuthKeyFile)
 		if err != nil {
-			log.Fatal("Error loading token auth key %s: %s", tokenAuthKeyFile, err)
+			log.Fatal(fmt.Sprintf("Error loading token auth key %s: %s", tokenAuthKeyFile, err))
 		}
 
 		token := &token.Token{
