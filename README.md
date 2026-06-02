@@ -1,11 +1,11 @@
-# toot-relay #
+# toot-relay
 
 This is a small service, written in Go, that can be set as an endpoint for web
 push notifications, and forwards the encrypted payloads it receives to an iOS
 app through APNs. It is designed to forward notifications from Mastodon to
 the iOS client Toot!, but may be of use in other cases too.
 
-## Usage ##
+## Usage
 
 Run `go build`, run `./toot-relay`. It will listen on port 42069. Subscribe to web
 pushes using the endpoint
@@ -19,18 +19,18 @@ directory, named `toot-relay.p12`. With a production certificate, both pushing
 to production and development environments works. With a development certificate,
 only development will work.
 
-## Docker ##
+## Docker
 
 A simple Dockerfile is included for running the service containerised. It has been
 tested with the following hosting solutions:
 
-* [Zeit Now](https://zeit.co/now) - There is also a configuration file (`now.json`)
+- [Zeit Now](https://zeit.co/now) - There is also a configuration file (`now.json`)
   for using this service to host it. It requites adding the p12 file as a base 64
   encoded secret: `now secrets add p12-base64 "$(cat toot-relay.p12 | base64)`
-* [Heroku](https://heroku.com/) - Add a configuration var named `P12_BASE64`
+- [Heroku](https://heroku.com/) - Add a configuration var named `P12_BASE64`
   containing the base 64 encoded p12 file.
 
-## Status ##
+## Status
 
 This is a fairly minimal implementation of only the parts of RFC 8030 that are
 required to relay push notifications from Mastodon. It only supports the simple
@@ -50,7 +50,7 @@ to support in this service, as it just needs to ignore the extra headers
 not support it and this it is rejected. If your client-side code can handle it,
 uncomment the line referring to it.
 
-## Configuration ##
+## Configuration
 
 ### Runtime Flags
 
@@ -61,6 +61,15 @@ uncomment the line referring to it.
 
 The service will read a few environment variables that let you make some adjustments.
 
+For authentication to Apple, the relay will use the first defined variable from this list
+
+- `P12_BASE64`
+- `P12_FILENAME`
+- `TOKEN_AUTH_KEY_FILENAME`: For JWT token auth (using a non-expiring auth key to generate ephemerary JWT tokens)
+
+* `TOKEN_AUTH_KEY_FILENAME`: The name of the p8 file to use for JWT token auth
+* `TOKEN_KEY_ID`: When using JWT token auth, Key ID from developer account (Certificates, Identifiers & Profiles -> Keys)
+* `TOKEN_TEAM_ID`: When using JWT token auth, Team ID from developer account (View Account -> Membership)
 * `P12_FILENAME`: The name of the p12 file to use for the push notification certificate.
   Defaults to `toot-relay.p12`.
 * `P12_BASE64`: Alternative, you can include the base64-encoded data for the entire p12
@@ -74,7 +83,7 @@ The service will read a few environment variables that let you make some adjustm
 * `CA_FILENAME`: A file containing PEM encoded certificates that will override the system
   root CAs when connecting to the Apple Notification Service API if set. Default: unset.
 
-## Receiving ##
+## Receiving
 
 The client needs to implement a user notification service extension that can
 decrypt the payloads once they arrive. The original payload is transmitted in the
@@ -82,13 +91,13 @@ decrypt the payloads once they arrive. The original payload is transmitted in th
 the cryptographic salt in `s`, and any extra value supplied in the push endpoint
 URL (the `extra` part as shown in the Usage section above) is passed in `x`.
 
-### Example ###
+### Example
 
 An [excerpt of the Toot! code base](iOS/) for receiving and decrypting messages
 is available. You can use this as a basis for your own implementation, or
 read on for more technical details of how to do it yourself.
 
-### Encoding ###
+### Encoding
 
 The fields `p`, `s` and `k` are transmitted using an extended variant of z85
 encoding. This encoding is the same as [ZeroMQ's z85 encoding][z85], but extended
@@ -100,7 +109,7 @@ representing an 8, 16 or 24-bit integer similarly to how normal z85 encoding rep
 [z85]: https://rfc.zeromq.org/spec:32/Z85/
 [z85ext]: http://grokbase.com/t/zeromq/zeromq-dev/144nd380c4/rfc-32-z85-requiring-frames-to-be-multiples-of-4-or-5-bytes
 
-## Regarding HTTPS ##
+## Regarding HTTPS
 
 Mastodon, and possibly others, force SSL when connecting to the push endpoint.
 The service does have rudimentary support; put files named `toot-relay.crt` and
@@ -110,9 +119,8 @@ serve HTTPS instead of HTTP. (Also see the "Configuration" section.)
 In practice, it may be easier to use ngnix or another service to handle HTTPS
 traffic for you, and forward it to the service as plain HTTP.
 
-## License ##
+## License
 
 This code is released into the public domain with no warranties. If that is not
 suitable, it is also available under the
 [CC0 license](http://creativecommons.org/publicdomain/zero/1.0/).
-
