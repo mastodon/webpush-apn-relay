@@ -148,7 +148,7 @@ func main() {
 
 		developmentClient = apns2.NewClient(cert).Development()
 		productionClient = apns2.NewClient(cert).Production()
-	} else if p12file != "" {
+	} else {
 		cert, err := certificate.FromP12File(p12file, p12password)
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Error loading certificate file: %s", err))
