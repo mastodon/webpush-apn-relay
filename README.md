@@ -61,13 +61,14 @@ uncomment the line referring to it.
 
 The service will read a few environment variables that let you make some adjustments.
 
-For authentication to Apple, the relay will use the first defined variable from this list
+For authentication to Apple, the relay will use the first defined variable from this list, in order:
 
+- `TOKEN_AUTH_KEY_FILENAME`: For JWT token auth (using a non-expiring auth key to generate ephemerary JWT tokens)
 - `P12_BASE64`
 - `P12_FILENAME`
-- `TOKEN_AUTH_KEY_FILENAME`: For JWT token auth (using a non-expiring auth key to generate ephemerary JWT tokens)
 
-* `TOKEN_AUTH_KEY_FILENAME`: The name of the p8 file to use for JWT token auth
+* `TOKEN_AUTH_KEY_FILENAME`: The name of the p8 file to use for JWT token auth.
+  Needs to be requested from [developer.apple.com](https://developer.apple.com/account/resources/keys/list) (See [Apple's docs](https://developer.apple.com/documentation/usernotifications/establishing-a-token-based-connection-to-apns#Obtain-an-encryption-key-and-key-ID-from-Apple) for more details).
 * `TOKEN_KEY_ID`: When using JWT token auth, Key ID from developer account (Certificates, Identifiers & Profiles -> Keys)
 * `TOKEN_TEAM_ID`: When using JWT token auth, Team ID from developer account (View Account -> Membership)
 * `P12_FILENAME`: The name of the p12 file to use for the push notification certificate.

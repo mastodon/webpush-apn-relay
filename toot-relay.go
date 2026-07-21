@@ -121,7 +121,21 @@ func main() {
 		}
 	}
 
-	if p12base64 != "" {
+	if tokenAuthKeyFile != "" {
+		authKey, err := token.AuthKeyFromFile(tokenAuthKeyFile)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Error loading token auth key %s: %s", tokenAuthKeyFile, err))
+		}
+
+		token := &token.Token{
+			AuthKey: authKey,
+			KeyID:   tokenKeyId,
+			TeamID:  tokenTeamId,
+		}
+
+		developmentClient = apns2.NewTokenClient(token).Development()
+		productionClient = apns2.NewTokenClient(token).Production()
+	} else if p12base64 != "" {
 		bytes, err := base64.StdEncoding.DecodeString(p12base64)
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Base64 decoding error: %s", err))
@@ -142,20 +156,6 @@ func main() {
 
 		developmentClient = apns2.NewClient(cert).Development()
 		productionClient = apns2.NewClient(cert).Production()
-	} else {
-		authKey, err := token.AuthKeyFromFile(tokenAuthKeyFile)
-		if err != nil {
-			log.Fatal(fmt.Sprintf("Error loading token auth key %s: %s", tokenAuthKeyFile, err))
-		}
-
-		token := &token.Token{
-			AuthKey: authKey,
-			KeyID:   tokenKeyId,
-			TeamID:  tokenTeamId,
-		}
-
-		developmentClient = apns2.NewTokenClient(token).Development()
-		productionClient = apns2.NewTokenClient(token).Production()
 	}
 
 	if rootCAs != nil {
