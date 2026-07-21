@@ -101,7 +101,7 @@ func main() {
 	p12base64 := env("P12_BASE64", "")
 	p12password := env("P12_PASSWORD", "")
 
-	tokenAuthKeyPath := env("TOKEN_AUTH_KEY_FILENAME", "")
+	tokenSignKeyFile := env("TOKEN_AUTH_KEY_FILENAME", "")
 	tokenKeyId := env("TOKEN_KEY_ID", "")
 	tokenTeamId := env("TOKEN_TEAM_ID", "")
 
@@ -121,10 +121,10 @@ func main() {
 		}
 	}
 
-	if tokenAuthKeyPath != "" {
-		authKey, err := token.AuthKeyFromFile(tokenAuthKeyPath)
+	if tokenSignKeyFile != "" {
+		authKey, err := token.AuthKeyFromFile(tokenSignKeyFile)
 		if err != nil {
-			log.Fatal(fmt.Sprintf("Error loading token auth key %s: %s", tokenAuthKeyPath, err))
+			log.Fatal(fmt.Sprintf("Error loading token auth key %s: %s", tokenSignKeyFile, err))
 		}
 
 		token := &token.Token{
