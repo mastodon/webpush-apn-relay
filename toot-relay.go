@@ -87,7 +87,7 @@ func worker(workerId int) {
 					msg.requestLog.WithFields(log.Fields{
 						"error":           reqErr.Error(),
 						"unsubscribe-url": msg.unsubscribeUrl,
-					}).Error("Failed to set up HTTP client for unsubscribe request")
+					}).Error("Failed to create HTTP request for unsubscribe")
 				}
 
 				unsubscribeResp, respErr := httpClient.Do(unsubscribeReq)
