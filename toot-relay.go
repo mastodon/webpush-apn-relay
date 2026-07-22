@@ -48,6 +48,7 @@ func worker(workerId int) {
 	defer log.Info(fmt.Sprintf("stopping worker %d", workerId))
 
 	var client *apns2.Client
+	var httpClient = &http.Client{}
 
 	for msg := range messageChan {
 		if msg.isProduction {
@@ -80,22 +81,30 @@ func worker(workerId int) {
 			// from the originating server to avoid continuing sending requests that will never work again.
 			// See https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns
 			if msg.unsubscribeUrl != "" && res.StatusCode == 410 {
-				unsubscribeRes, unsubscribeErr := http.NewRequest("DELETE", msg.unsubscribeUrl, nil)
 
-				if unsubscribeErr == nil {
-					if unsubscribeRes.Response.StatusCode == 200 {
-						unsubscribed = true
-					} else {
-						msg.requestLog.WithFields(log.Fields{
-							"status-code":     unsubscribeRes.Response.StatusCode,
-							"unsubscribe-url": msg.unsubscribeUrl,
-						}).Error(fmt.Sprintf("Failed to unsubscribe for notification (%v)", unsubscribeRes.Response.StatusCode))
-					}
+				unsubscribeReq, reqErr := http.NewRequest("DELETE", msg.unsubscribeUrl, nil)
+				if reqErr != nil {
+					msg.requestLog.WithFields(log.Fields{
+						"error":           reqErr.Error(),
+						"unsubscribe-url": msg.unsubscribeUrl,
+					}).Error("Failed to set up HTTP client for unsubscribe request")
+				}
+
+				unsubscribeResp, respErr := httpClient.Do(unsubscribeReq)
+				if respErr != nil {
+					msg.requestLog.WithFields(log.Fields{
+						"error":           respErr.Error(),
+						"unsubscribe-url": msg.unsubscribeUrl,
+					}).Error("Failed to send unsubscribe request")
+				}
+
+				if unsubscribeResp.StatusCode == 200 {
+					unsubscribed = true
 				} else {
 					msg.requestLog.WithFields(log.Fields{
-						"error":           unsubscribeErr.Error(),
+						"status-code":     unsubscribeResp.StatusCode,
 						"unsubscribe-url": msg.unsubscribeUrl,
-					}).Error("Failed to unsubscribe for notification")
+					}).Error(fmt.Sprintf("Failed to unsubscribe for notification (%v)", unsubscribeResp.StatusCode))
 				}
 			}
 
