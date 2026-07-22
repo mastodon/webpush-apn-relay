@@ -96,15 +96,16 @@ func worker(workerId int) {
 						"error":           respErr.Error(),
 						"unsubscribe-url": msg.unsubscribeUrl,
 					}).Error("Failed to send unsubscribe request")
-				}
 
-				if unsubscribeResp.StatusCode == 200 {
-					unsubscribed = true
 				} else {
-					msg.requestLog.WithFields(log.Fields{
-						"status-code":     unsubscribeResp.StatusCode,
-						"unsubscribe-url": msg.unsubscribeUrl,
-					}).Error(fmt.Sprintf("Failed to unsubscribe for notification (%v)", unsubscribeResp.StatusCode))
+					if unsubscribeResp.StatusCode == 200 {
+						unsubscribed = true
+					} else {
+						msg.requestLog.WithFields(log.Fields{
+							"status-code":     unsubscribeResp.StatusCode,
+							"unsubscribe-url": msg.unsubscribeUrl,
+						}).Error(fmt.Sprintf("Failed to unsubscribe for notification (%v)", unsubscribeResp.StatusCode))
+					}
 				}
 			}
 
