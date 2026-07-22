@@ -17,6 +17,7 @@ import (
 	"github.com/sideshow/apns2"
 	"github.com/sideshow/apns2/certificate"
 	"github.com/sideshow/apns2/payload"
+	"github.com/sideshow/apns2/token"
 	log "github.com/sirupsen/logrus"
 	"golang.org/x/net/http2"
 
@@ -100,6 +101,10 @@ func main() {
 	p12base64 := env("P12_BASE64", "")
 	p12password := env("P12_PASSWORD", "")
 
+	tokenSignKeyFile := env("TOKEN_AUTH_KEY_FILENAME", "")
+	tokenKeyId := env("TOKEN_KEY_ID", "")
+	tokenTeamId := env("TOKEN_TEAM_ID", "")
+
 	port := env("PORT", "42069")
 	tlsCrtFile := env("CRT_FILENAME", "toot-relay.crt")
 	tlsKeyFile := env("KEY_FILENAME", "toot-relay.key")
@@ -116,7 +121,21 @@ func main() {
 		}
 	}
 
-	if p12base64 != "" {
+	if tokenSignKeyFile != "" {
+		authKey, err := token.AuthKeyFromFile(tokenSignKeyFile)
+		if err != nil {
+			log.Fatal(fmt.Sprintf("Error loading token auth key %s: %s", tokenSignKeyFile, err))
+		}
+
+		token := &token.Token{
+			AuthKey: authKey,
+			KeyID:   tokenKeyId,
+			TeamID:  tokenTeamId,
+		}
+
+		developmentClient = apns2.NewTokenClient(token).Development()
+		productionClient = apns2.NewTokenClient(token).Production()
+	} else if p12base64 != "" {
 		bytes, err := base64.StdEncoding.DecodeString(p12base64)
 		if err != nil {
 			log.Fatal(fmt.Sprintf("Base64 decoding error: %s", err))
