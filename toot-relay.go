@@ -158,7 +158,8 @@ func main() {
 		productionClient = apns2.NewClient(cert).Production()
 	}
 
-	if rootCAs != nil {
+	// We only want to add root CAs when we are using a client CA, and have a TLSClientConfig.
+	if rootCAs != nil && developmentClient.HTTPClient.Transport.(*http2.Transport).TLSClientConfig != nil {
 		developmentClient.HTTPClient.Transport.(*http2.Transport).TLSClientConfig.RootCAs = rootCAs
 		productionClient.HTTPClient.Transport.(*http2.Transport).TLSClientConfig.RootCAs = rootCAs
 	}
