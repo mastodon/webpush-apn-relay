@@ -42,7 +42,7 @@ func processApnNotificationMessage(msg *Message, httpClient *http.Client, worker
 		client = developmentClient
 	}
 
-	res, err := client.Push(msg.notification)
+	res, err := client.PushWithContext(sctx, msg.notification)
 
 	if err != nil {
 		msg.requestLog.Error(fmt.Sprintf("Push error: %s", err))
