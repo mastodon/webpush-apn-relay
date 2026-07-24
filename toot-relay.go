@@ -201,7 +201,8 @@ func main() {
 		productionClient.HTTPClient.Transport.(*http2.Transport).TLSClientConfig.RootCAs = rootCAs
 	}
 
-	mux.HandleFunc("/relay-to/", handler)
+	mux.HandleFunc("POST /relay-to/{environment}/{token}/{extra...}", handleApnNotification)
+	mux.HandleFunc("GET /relay-to/_health", handleHealthCheck)
 
 	messageChan = make(chan *Message, maxQueueSize)
 	for i := 1; i <= maxWorkers; i++ {
@@ -215,33 +216,36 @@ func main() {
 	}
 }
 
-func handler(writer http.ResponseWriter, request *http.Request) {
-	span, sctx := tracer.StartSpanFromContext(ctx, "web.request", tracer.ResourceName(request.RequestURI))
+func handleHealthCheck(writer http.ResponseWriter, request *http.Request) {
+	span, sctx := tracer.StartSpanFromContext(ctx, "web.request.health", tracer.ResourceName(request.RequestURI))
 	defer span.Finish()
 
 	requestLog := log.WithContext(sctx)
 
-	components := strings.Split(request.URL.Path, "/")
+	writer.WriteHeader(200)
+	fmt.Println(writer, "OK")
+	requestLog.Info("Health check OK")
+}
 
-	if len(components) < 4 {
-		writer.WriteHeader(500)
-		fmt.Fprintln(writer, "Invalid URL path:", request.URL.Path)
-		requestLog.Error(fmt.Sprintf("Invalid URL path: %s", request.URL.Path))
-		return
-	}
+func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
+	span, sctx := tracer.StartSpanFromContext(ctx, "web.request.handleApnNotification", tracer.ResourceName(request.RequestURI))
+	defer span.Finish()
 
-	isProduction := components[2] == "production"
+	requestLog := log.WithContext(sctx)
+
+	isProduction := request.PathValue("environment") == "production"
 
 	notification := &apns2.Notification{}
-	notification.DeviceToken = components[3]
+	notification.DeviceToken = request.PathValue("token")
 
 	buffer := new(bytes.Buffer)
 	buffer.ReadFrom(request.Body)
 	encodedString := encode85(buffer.Bytes())
 	payload := payload.NewPayload().Alert("🎺").MutableContent().ContentAvailable().Custom("p", encodedString)
 
-	if len(components) > 4 {
-		payload.Custom("x", strings.Join(components[4:], "/"))
+	extra := request.PathValue("extra")
+	if extra != "" {
+		payload.Custom("x", extra)
 	}
 
 	notification.Payload = payload
