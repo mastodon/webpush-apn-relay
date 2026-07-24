@@ -2,7 +2,6 @@ package main
 
 import (
 	"bytes"
-	"context"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -26,13 +25,6 @@ import (
 	"github.com/DataDog/dd-trace-go/v2/ddtrace/tracer"
 )
 
-type Message struct {
-	isProduction   bool
-	notification   *apns2.Notification
-	unsubscribeUrl string
-	requestLog     *log.Entry // For logging with datadog context
-}
-
 var (
 	developmentClient *apns2.Client
 	productionClient  *apns2.Client
@@ -40,94 +32,20 @@ var (
 	messageChan       chan *Message
 	maxQueueSize      int
 	maxWorkers        int
-	ctx               context.Context
 )
 
-func worker(workerId int) {
-	log.Info(fmt.Sprintf("starting worker %d", workerId))
-	defer log.Info(fmt.Sprintf("stopping worker %d", workerId))
-
-	var client *apns2.Client
-	var httpClient = &http.Client{}
-
-	for msg := range messageChan {
-		if msg.isProduction {
-			client = productionClient
-		} else {
-			client = developmentClient
-		}
-
-		res, err := client.Push(msg.notification)
-
-		if err != nil {
-			msg.requestLog.Error(fmt.Sprintf("Push error: %s", err))
-			continue
-		}
-
-		if res.Sent() {
-			msg.requestLog.WithFields(log.Fields{
-				"status-code":  res.StatusCode,
-				"apns-id":      res.ApnsID,
-				"reason":       res.Reason,
-				"device-token": msg.notification.DeviceToken,
-				"expiration":   msg.notification.Expiration,
-				"priority":     msg.notification.Priority,
-				"collapse-id":  msg.notification.CollapseID,
-			}).Info(fmt.Sprintf("Sent notification (%v)", res.StatusCode))
-		} else {
-			unsubscribed := false
-
-			// 410 status means that the token is invalid. This is a definitive error, and we should remove the subscription
-			// from the originating server to avoid continuing sending requests that will never work again.
-			// See https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns
-			if msg.unsubscribeUrl != "" && res.StatusCode == 410 {
-
-				unsubscribeReq, reqErr := http.NewRequest("DELETE", msg.unsubscribeUrl, nil)
-				if reqErr != nil {
-					msg.requestLog.WithFields(log.Fields{
-						"error":           reqErr.Error(),
-						"unsubscribe-url": msg.unsubscribeUrl,
-					}).Error("Failed to create HTTP request for unsubscribe")
-				}
-
-				unsubscribeResp, respErr := httpClient.Do(unsubscribeReq)
-				if respErr != nil {
-					msg.requestLog.WithFields(log.Fields{
-						"error":           respErr.Error(),
-						"unsubscribe-url": msg.unsubscribeUrl,
-					}).Error("Failed to send unsubscribe request")
-
-				} else {
-					if unsubscribeResp.StatusCode == 200 {
-						unsubscribed = true
-					} else {
-						msg.requestLog.WithFields(log.Fields{
-							"status-code":     unsubscribeResp.StatusCode,
-							"unsubscribe-url": msg.unsubscribeUrl,
-						}).Error(fmt.Sprintf("Failed to unsubscribe for notification (%v)", unsubscribeResp.StatusCode))
-					}
-				}
-			}
-
-			msg.requestLog.WithFields(log.Fields{
-				"status-code":  res.StatusCode,
-				"apns-id":      res.ApnsID,
-				"reason":       res.Reason,
-				"unsubscribed": unsubscribed,
-			}).Error(fmt.Sprintf("Failed to send notification (%v)", res.StatusCode))
-		}
-	}
-}
-
 func main() {
-	tracer.Start()
-	defer tracer.Stop()
+	err := tracer.Start()
+	if err != nil {
+		log.Fatal(fmt.Sprintf("Error starting tracer: %s", err))
+		return
+	}
+
+	httpClient := httptrace.WrapClient(http.DefaultClient)
 
 	mux := httptrace.NewServeMux()
 
 	log.AddHook(&dd_logrus.DDContextLogHook{})
-
-	ctx = context.Background()
 
 	flag.IntVar(&maxQueueSize, "max-queue-size", 4096, "Maximum number of messages to queue")
 	flag.IntVar(&maxWorkers, "max-workers", 8, "Maximum number of workers")
@@ -201,12 +119,16 @@ func main() {
 		productionClient.HTTPClient.Transport.(*http2.Transport).TLSClientConfig.RootCAs = rootCAs
 	}
 
+	// instrument the HTTP clients with Datadog APM
+	httptrace.WrapClient(developmentClient.HTTPClient)
+	httptrace.WrapClient(productionClient.HTTPClient)
+
 	mux.HandleFunc("POST /relay-to/{environment}/{token}/{extra...}", handleApnNotification)
 	mux.HandleFunc("GET /relay-to/_health", handleHealthCheck)
 
 	messageChan = make(chan *Message, maxQueueSize)
 	for i := 1; i <= maxWorkers; i++ {
-		go worker(i)
+		go apnNotificationsWorker(i, httpClient)
 	}
 
 	if _, err := os.Stat(tlsCrtFile); !os.IsNotExist(err) {
@@ -217,7 +139,7 @@ func main() {
 }
 
 func handleHealthCheck(writer http.ResponseWriter, request *http.Request) {
-	span, sctx := tracer.StartSpanFromContext(ctx, "web.request.health", tracer.ResourceName(request.RequestURI))
+	span, sctx := tracer.StartSpanFromContext(request.Context(), "web.request.health", tracer.ResourceName(request.RequestURI))
 	defer span.Finish()
 
 	requestLog := log.WithContext(sctx)
@@ -228,7 +150,7 @@ func handleHealthCheck(writer http.ResponseWriter, request *http.Request) {
 }
 
 func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
-	span, sctx := tracer.StartSpanFromContext(ctx, "web.request.handleApnNotification", tracer.ResourceName(request.RequestURI))
+	span, sctx := tracer.StartSpanFromContext(request.Context(), "web.request.handleApnNotification", tracer.ResourceName(request.RequestURI))
 	defer span.Finish()
 
 	requestLog := log.WithContext(sctx)
@@ -239,7 +161,13 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 	notification.DeviceToken = request.PathValue("token")
 
 	buffer := new(bytes.Buffer)
-	buffer.ReadFrom(request.Body)
+	_, err := buffer.ReadFrom(request.Body)
+	if err != nil {
+		http.Error(writer, "Error reading request body", http.StatusInternalServerError)
+		requestLog.Error(fmt.Sprintf("Error reading request body: %s", err))
+		return
+	}
+
 	encodedString := encode85(buffer.Bytes())
 	payload := payload.NewPayload().Alert("🎺").MutableContent().ContentAvailable().Custom("p", encodedString)
 
@@ -257,7 +185,7 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 			payload.Custom("k", publicKey)
 		} else {
 			writer.WriteHeader(500)
-			fmt.Fprintln(writer, "Error retrieving public key:", err)
+			fmt.Println(writer, "Error retrieving public key:", err)
 			requestLog.Error(fmt.Sprintf("Error retrieving public key: %s", err))
 			return
 		}
@@ -266,14 +194,14 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 			payload.Custom("s", salt)
 		} else {
 			writer.WriteHeader(500)
-			fmt.Fprintln(writer, "Error retrieving salt:", err)
+			fmt.Println(writer, "Error retrieving salt:", err)
 			requestLog.Error(fmt.Sprintf("Error retrieving salt: %s", err))
 			return
 		}
 	case "aes128gcm": // RFC8030+RFC8291+RFC8292 support. No further headers needed.
 	default:
 		writer.WriteHeader(415)
-		fmt.Fprintln(writer, "Unsupported Content-Encoding:", request.Header.Get("Content-Encoding"))
+		fmt.Println(writer, "Unsupported Content-Encoding:", request.Header.Get("Content-Encoding"))
 		requestLog.Error(fmt.Sprintf("Unsupported Content-Encoding: %s", request.Header.Get("Content-Encoding")))
 		return
 	}
@@ -297,7 +225,7 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 
 	unsubscribeUrl := request.Header.Get("Unsubscribe-Url")
 
-	messageChan <- &Message{isProduction, notification, unsubscribeUrl, requestLog}
+	messageChan <- &Message{isProduction, notification, unsubscribeUrl, requestLog, sctx}
 
 	// always reply w/ success, since we don't know how apple responded
 	writer.WriteHeader(201)
