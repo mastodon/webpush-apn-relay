@@ -14,6 +14,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/google/uuid"
 	"github.com/sideshow/apns2"
 	"github.com/sideshow/apns2/certificate"
 	"github.com/sideshow/apns2/payload"
@@ -151,10 +152,21 @@ func handleHealthCheck(writer http.ResponseWriter, request *http.Request) {
 }
 
 func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
-	span, sctx := tracer.StartSpanFromContext(request.Context(), "web.request.handleApnNotification", tracer.ResourceName(request.RequestURI))
+	requestID := request.Header.Get("X-Request-ID")
+
+	if requestID == "" {
+		requestID = uuid.New().String()
+	}
+
+	span, sctx := tracer.StartSpanFromContext(
+		request.Context(),
+		"web.request.handleApnNotification",
+		tracer.ResourceName(request.RequestURI),
+		tracer.Tag("request-id", requestID),
+	)
 	defer span.Finish()
 
-	requestLog := log.WithContext(sctx)
+	requestLog := log.WithFields(log.Fields{"request-id": requestID}).WithContext(sctx)
 
 	isProduction := request.PathValue("environment") == "production"
 

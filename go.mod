@@ -6,6 +6,7 @@ require (
 	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.9.1
 	github.com/DataDog/dd-trace-go/contrib/sirupsen/logrus/v2 v2.9.1
 	github.com/DataDog/dd-trace-go/v2 v2.9.1
+	github.com/google/uuid v1.6.0
 	github.com/sideshow/apns2 v0.25.0
 	github.com/sirupsen/logrus v1.9.4
 	golang.org/x/net v0.57.0
@@ -36,7 +37,6 @@ require (
 	github.com/go-logr/logr v1.4.4 // indirect
 	github.com/go-ole/go-ole v1.3.0 // indirect
 	github.com/golang-jwt/jwt/v4 v4.5.2 // indirect
-	github.com/google/uuid v1.6.0 // indirect
 	github.com/hashicorp/go-version v1.9.0 // indirect
 	github.com/json-iterator/go v1.1.12 // indirect
 	github.com/klauspost/compress v1.19.1 // indirect
@@ -80,6 +80,6 @@ require (
 	golang.org/x/text v0.40.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260723215102-3fe39f3c1018 // indirect
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260724162435-b2f20204f0df // indirect
 	google.golang.org/protobuf v1.36.12-0.20260116114154-8c4c4ae446ca // indirect
 )
