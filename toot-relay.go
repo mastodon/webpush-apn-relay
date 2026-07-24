@@ -120,8 +120,11 @@ func worker(workerId int) {
 }
 
 func main() {
-	tracer.Start()
-	defer tracer.Stop()
+	err := tracer.Start()
+	if err != nil {
+		log.Fatal(fmt.Sprintf("Error starting tracer: %s", err))
+		return
+	}
 
 	mux := httptrace.NewServeMux()
 
@@ -239,7 +242,13 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 	notification.DeviceToken = request.PathValue("token")
 
 	buffer := new(bytes.Buffer)
-	buffer.ReadFrom(request.Body)
+	_, err := buffer.ReadFrom(request.Body)
+	if err != nil {
+		http.Error(writer, "Error reading request body", http.StatusInternalServerError)
+		requestLog.Error(fmt.Sprintf("Error reading request body: %s", err))
+		return
+	}
+
 	encodedString := encode85(buffer.Bytes())
 	payload := payload.NewPayload().Alert("🎺").MutableContent().ContentAvailable().Custom("p", encodedString)
 
@@ -257,7 +266,7 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 			payload.Custom("k", publicKey)
 		} else {
 			writer.WriteHeader(500)
-			fmt.Fprintln(writer, "Error retrieving public key:", err)
+			fmt.Println(writer, "Error retrieving public key:", err)
 			requestLog.Error(fmt.Sprintf("Error retrieving public key: %s", err))
 			return
 		}
@@ -266,14 +275,14 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 			payload.Custom("s", salt)
 		} else {
 			writer.WriteHeader(500)
-			fmt.Fprintln(writer, "Error retrieving salt:", err)
+			fmt.Println(writer, "Error retrieving salt:", err)
 			requestLog.Error(fmt.Sprintf("Error retrieving salt: %s", err))
 			return
 		}
 	case "aes128gcm": // RFC8030+RFC8291+RFC8292 support. No further headers needed.
 	default:
 		writer.WriteHeader(415)
-		fmt.Fprintln(writer, "Unsupported Content-Encoding:", request.Header.Get("Content-Encoding"))
+		fmt.Println(writer, "Unsupported Content-Encoding:", request.Header.Get("Content-Encoding"))
 		requestLog.Error(fmt.Sprintf("Unsupported Content-Encoding: %s", request.Header.Get("Content-Encoding")))
 		return
 	}
