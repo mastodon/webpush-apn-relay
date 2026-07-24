@@ -141,10 +141,7 @@ func main() {
 }
 
 func handleHealthCheck(writer http.ResponseWriter, request *http.Request) {
-	span, sctx := tracer.StartSpanFromContext(request.Context(), "web.request.health", tracer.ResourceName(request.RequestURI))
-	defer span.Finish()
-
-	requestLog := log.WithContext(sctx)
+	requestLog := log.WithContext(request.Context())
 
 	writer.WriteHeader(200)
 	fmt.Println(writer, "OK")
@@ -152,21 +149,17 @@ func handleHealthCheck(writer http.ResponseWriter, request *http.Request) {
 }
 
 func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
+	ctx := request.Context()
 	requestID := request.Header.Get("X-Request-ID")
 
 	if requestID == "" {
 		requestID = uuid.New().String()
 	}
 
-	span, sctx := tracer.StartSpanFromContext(
-		request.Context(),
-		"web.request.handleApnNotification",
-		tracer.ResourceName(request.RequestURI),
-		tracer.Tag("request-id", requestID),
-	)
-	defer span.Finish()
+	span, _ := tracer.SpanFromContext(ctx)
+	span.SetTag("request-id", requestID)
 
-	requestLog := log.WithFields(log.Fields{"request-id": requestID}).WithContext(sctx)
+	requestLog := log.WithFields(log.Fields{"request-id": requestID}).WithContext(ctx)
 
 	isProduction := request.PathValue("environment") == "production"
 
@@ -238,7 +231,7 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 
 	unsubscribeUrl := request.Header.Get("Unsubscribe-Url")
 
-	messageChan <- &Message{isProduction, notification, unsubscribeUrl, requestLog, context.WithoutCancel(sctx)}
+	messageChan <- &Message{isProduction, notification, unsubscribeUrl, requestLog, context.WithoutCancel(ctx)}
 
 	// always reply w/ success, since we don't know how apple responded
 	writer.WriteHeader(201)
