@@ -1,4 +1,4 @@
-FROM golang:1.24-bookworm as build-env
+FROM golang:1.26-bookworm as build-env
 WORKDIR /go/src/webpush-apn-relay
 
 COPY go.mod ./
