@@ -119,6 +119,10 @@ func main() {
 		productionClient.HTTPClient.Transport.(*http2.Transport).TLSClientConfig.RootCAs = rootCAs
 	}
 
+	// instrument the HTTP clients with Datadog APM
+	httptrace.WrapClient(developmentClient.HTTPClient)
+	httptrace.WrapClient(productionClient.HTTPClient)
+
 	mux.HandleFunc("POST /relay-to/{environment}/{token}/{extra...}", handleApnNotification)
 	mux.HandleFunc("GET /relay-to/_health", handleHealthCheck)
 
