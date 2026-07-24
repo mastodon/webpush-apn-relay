@@ -95,6 +95,8 @@ func unsubscribe(unsubscribeUrl string, httpClient *http.Client, ctx context.Con
 		return false
 	}
 
+	defer unsubscribeReq.Body.Close()
+
 	unsubscribeResp, respErr := httpClient.Do(unsubscribeReq)
 	if respErr != nil {
 		requestLog.WithFields(log.Fields{
