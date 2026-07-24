@@ -6,7 +6,9 @@ require (
 	github.com/sideshow/apns2 v0.25.0
 	github.com/sirupsen/logrus v1.9.4
 	golang.org/x/net v0.57.0
-	gopkg.in/DataDog/dd-trace-go.v1 v1.74.8
+	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.9.1
+	github.com/DataDog/dd-trace-go/contrib/sirupsen/logrus/v2 v2.9.1
+	github.com/DataDog/dd-trace-go/v2 v2.9.1
 )
 
 require (
@@ -24,9 +26,6 @@ require (
 	github.com/DataDog/datadog-agent/pkg/util/scrubber v0.81.2 // indirect
 	github.com/DataDog/datadog-agent/pkg/version v0.81.2 // indirect
 	github.com/DataDog/datadog-go/v5 v5.9.0 // indirect
-	github.com/DataDog/dd-trace-go/contrib/net/http/v2 v2.9.1 // indirect
-	github.com/DataDog/dd-trace-go/contrib/sirupsen/logrus/v2 v2.9.1 // indirect
-	github.com/DataDog/dd-trace-go/v2 v2.9.1 // indirect
 	github.com/DataDog/go-libddwaf/v2 v2.4.2 // indirect
 	github.com/DataDog/go-libddwaf/v3 v3.5.4 // indirect
 	github.com/DataDog/go-libddwaf/v4 v4.10.0 // indirect
