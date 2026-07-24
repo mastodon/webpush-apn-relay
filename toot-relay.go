@@ -43,12 +43,11 @@ var (
 	maxWorkers        int
 )
 
-func worker(workerId int) {
+func worker(workerId int, httpClient *http.Client) {
 	log.Info(fmt.Sprintf("starting worker %d", workerId))
 	defer log.Info(fmt.Sprintf("stopping worker %d", workerId))
 
 	var client *apns2.Client
-	var httpClient = httptrace.WrapClient(&http.Client{})
 
 	for msg := range messageChan {
 		span, sctx := tracer.StartSpanFromContext(msg.ctx,
@@ -141,6 +140,8 @@ func main() {
 		return
 	}
 
+	httpClient := httptrace.WrapClient(http.DefaultClient)
+
 	mux := httptrace.NewServeMux()
 
 	log.AddHook(&dd_logrus.DDContextLogHook{})
@@ -222,7 +223,7 @@ func main() {
 
 	messageChan = make(chan *Message, maxQueueSize)
 	for i := 1; i <= maxWorkers; i++ {
-		go worker(i)
+		go worker(i, httpClient)
 	}
 
 	if _, err := os.Stat(tlsCrtFile); !os.IsNotExist(err) {
