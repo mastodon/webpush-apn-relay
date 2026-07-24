@@ -2,6 +2,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/x509"
 	"encoding/base64"
 	"encoding/binary"
@@ -225,7 +226,7 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 
 	unsubscribeUrl := request.Header.Get("Unsubscribe-Url")
 
-	messageChan <- &Message{isProduction, notification, unsubscribeUrl, requestLog, sctx}
+	messageChan <- &Message{isProduction, notification, unsubscribeUrl, requestLog, context.WithoutCancel(sctx)}
 
 	// always reply w/ success, since we don't know how apple responded
 	writer.WriteHeader(201)
