@@ -31,6 +31,7 @@ type Message struct {
 	notification   *apns2.Notification
 	unsubscribeUrl string
 	requestLog     *log.Entry // For logging with datadog context
+	ctx            context.Context
 }
 
 var (
@@ -40,7 +41,6 @@ var (
 	messageChan       chan *Message
 	maxQueueSize      int
 	maxWorkers        int
-	ctx               context.Context
 )
 
 func worker(workerId int) {
@@ -48,9 +48,15 @@ func worker(workerId int) {
 	defer log.Info(fmt.Sprintf("stopping worker %d", workerId))
 
 	var client *apns2.Client
-	var httpClient = &http.Client{}
+	var httpClient = httptrace.WrapClient(&http.Client{})
 
 	for msg := range messageChan {
+		span, sctx := tracer.StartSpanFromContext(msg.ctx,
+			"processMessage",
+			tracer.Tag("workerId", workerId),
+			tracer.Tag("deviceToken", msg.notification.DeviceToken),
+		)
+
 		if msg.isProduction {
 			client = productionClient
 		} else {
@@ -61,10 +67,7 @@ func worker(workerId int) {
 
 		if err != nil {
 			msg.requestLog.Error(fmt.Sprintf("Push error: %s", err))
-			continue
-		}
-
-		if res.Sent() {
+		} else if res.Sent() {
 			msg.requestLog.WithFields(log.Fields{
 				"status-code":  res.StatusCode,
 				"apns-id":      res.ApnsID,
@@ -81,32 +84,7 @@ func worker(workerId int) {
 			// from the originating server to avoid continuing sending requests that will never work again.
 			// See https://developer.apple.com/documentation/usernotifications/handling-notification-responses-from-apns
 			if msg.unsubscribeUrl != "" && res.StatusCode == 410 {
-
-				unsubscribeReq, reqErr := http.NewRequest("DELETE", msg.unsubscribeUrl, nil)
-				if reqErr != nil {
-					msg.requestLog.WithFields(log.Fields{
-						"error":           reqErr.Error(),
-						"unsubscribe-url": msg.unsubscribeUrl,
-					}).Error("Failed to create HTTP request for unsubscribe")
-				}
-
-				unsubscribeResp, respErr := httpClient.Do(unsubscribeReq)
-				if respErr != nil {
-					msg.requestLog.WithFields(log.Fields{
-						"error":           respErr.Error(),
-						"unsubscribe-url": msg.unsubscribeUrl,
-					}).Error("Failed to send unsubscribe request")
-
-				} else {
-					if unsubscribeResp.StatusCode == 200 {
-						unsubscribed = true
-					} else {
-						msg.requestLog.WithFields(log.Fields{
-							"status-code":     unsubscribeResp.StatusCode,
-							"unsubscribe-url": msg.unsubscribeUrl,
-						}).Error(fmt.Sprintf("Failed to unsubscribe for notification (%v)", unsubscribeResp.StatusCode))
-					}
-				}
+				unsubscribed = unsubscribe(msg.unsubscribeUrl, httpClient, sctx, msg.requestLog)
 			}
 
 			msg.requestLog.WithFields(log.Fields{
@@ -116,6 +94,43 @@ func worker(workerId int) {
 				"unsubscribed": unsubscribed,
 			}).Error(fmt.Sprintf("Failed to send notification (%v)", res.StatusCode))
 		}
+
+		span.Finish()
+	}
+}
+
+func unsubscribe(unsubscribeUrl string, httpClient *http.Client, ctx context.Context, requestLog *log.Entry) bool {
+	span, sctx := tracer.StartSpanFromContext(ctx, "unsubscribe",
+		tracer.Tag("unsubscribeUrl", unsubscribeUrl),
+	)
+	defer span.Finish()
+
+	unsubscribeReq, reqErr := http.NewRequestWithContext(sctx, "DELETE", unsubscribeUrl, nil)
+	if reqErr != nil {
+		requestLog.WithFields(log.Fields{
+			"error":           reqErr.Error(),
+			"unsubscribe-url": unsubscribeUrl,
+		}).Error("Failed to create HTTP request for unsubscribe")
+		return false
+	}
+
+	unsubscribeResp, respErr := httpClient.Do(unsubscribeReq)
+	if respErr != nil {
+		requestLog.WithFields(log.Fields{
+			"error":           respErr.Error(),
+			"unsubscribe-url": unsubscribeUrl,
+		}).Error("Failed to send unsubscribe request")
+		return false
+	}
+
+	if unsubscribeResp.StatusCode == 200 {
+		return true
+	} else {
+		requestLog.WithFields(log.Fields{
+			"status-code":     unsubscribeResp.StatusCode,
+			"unsubscribe-url": unsubscribeUrl,
+		}).Error(fmt.Sprintf("Failed to unsubscribe for notification (%v)", unsubscribeResp.StatusCode))
+		return false
 	}
 }
 
@@ -129,8 +144,6 @@ func main() {
 	mux := httptrace.NewServeMux()
 
 	log.AddHook(&dd_logrus.DDContextLogHook{})
-
-	ctx = context.Background()
 
 	flag.IntVar(&maxQueueSize, "max-queue-size", 4096, "Maximum number of messages to queue")
 	flag.IntVar(&maxWorkers, "max-workers", 8, "Maximum number of workers")
@@ -220,7 +233,7 @@ func main() {
 }
 
 func handleHealthCheck(writer http.ResponseWriter, request *http.Request) {
-	span, sctx := tracer.StartSpanFromContext(ctx, "web.request.health", tracer.ResourceName(request.RequestURI))
+	span, sctx := tracer.StartSpanFromContext(request.Context(), "web.request.health", tracer.ResourceName(request.RequestURI))
 	defer span.Finish()
 
 	requestLog := log.WithContext(sctx)
@@ -231,7 +244,7 @@ func handleHealthCheck(writer http.ResponseWriter, request *http.Request) {
 }
 
 func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
-	span, sctx := tracer.StartSpanFromContext(ctx, "web.request.handleApnNotification", tracer.ResourceName(request.RequestURI))
+	span, sctx := tracer.StartSpanFromContext(request.Context(), "web.request.handleApnNotification", tracer.ResourceName(request.RequestURI))
 	defer span.Finish()
 
 	requestLog := log.WithContext(sctx)
@@ -306,7 +319,7 @@ func handleApnNotification(writer http.ResponseWriter, request *http.Request) {
 
 	unsubscribeUrl := request.Header.Get("Unsubscribe-Url")
 
-	messageChan <- &Message{isProduction, notification, unsubscribeUrl, requestLog}
+	messageChan <- &Message{isProduction, notification, unsubscribeUrl, requestLog, sctx}
 
 	// always reply w/ success, since we don't know how apple responded
 	writer.WriteHeader(201)
