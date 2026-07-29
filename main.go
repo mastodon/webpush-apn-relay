@@ -36,6 +36,18 @@ var (
 	maxWorkers        int
 )
 
+var envVersion = os.Getenv("DD_VERSION")
+
+func userAgent() string {
+	var version = envVersion
+
+	if version == "" {
+		version = "dev"
+	}
+
+	return "mastodon-webpush-apn-relay/" + version + " (https://github.com/mastodon/webpush-apn-relay)"
+}
+
 func main() {
 	err := tracer.Start()
 	if err != nil {

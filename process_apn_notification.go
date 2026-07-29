@@ -87,6 +87,8 @@ func unsubscribe(unsubscribeUrl string, httpClient *http.Client, ctx context.Con
 	defer span.Finish()
 
 	unsubscribeReq, reqErr := http.NewRequestWithContext(sctx, "DELETE", unsubscribeUrl, nil)
+	unsubscribeReq.Header.Set("User-Agent", userAgent())
+
 	if reqErr != nil {
 		requestLog.WithFields(log.Fields{
 			"error":           reqErr.Error(),
