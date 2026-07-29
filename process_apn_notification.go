@@ -66,6 +66,9 @@ func processApnNotificationMessage(msg *Message, httpClient *http.Client, worker
 			"unsubscribed": unsubscribed,
 		}).Error(fmt.Sprintf("Failed to send notification (%v)", res.StatusCode))
 
+		span.SetTag("unsubscribed", unsubscribed)
+		span.SetTag("apns.errorCode", res.StatusCode)
+
 		return
 	}
 
